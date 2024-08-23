@@ -1,4 +1,5 @@
 import os
+import sys
 import pyvo as vo
 import numpy as np
 from astropy import units as u
@@ -11,6 +12,24 @@ import argparse
 # To avoid warnings
 import warnings
 warnings.simplefilter("ignore")
+
+'''
+Todo:
+- add Gaia light curve
+- add Gaia BP/RP spectra
+
+- add GALEX
+
+- add eROSITA
+
+- add light curve plot: AAVSO, ASAS-SN, ZTF
+
+- add J-surveys
+
+- make more elegant to avoid plotting in case no objects are found
+
+
+'''
 
 def GATname(mySkycoords):
     myRAHH = str(int(mySkycoords.ra.hms[0])).zfill(2)
@@ -29,8 +48,6 @@ def GATname(mySkycoords):
     myGATname = "GAT" + str(myRAHH) + str(myRAMM)  + str(myRASS) + str(mysign) + str(myDEDD) + str(myDEMM) + str(myDESS)
     return myGATname
 
-# Simbad
-
 def checkSimbad(mySkycoords,myRadius):
     print('== Explore Simbad ==')
     ## https://astroquery.readthedocs.io/en/latest/simbad/simbad.html
@@ -41,13 +58,11 @@ def checkSimbad(mySkycoords,myRadius):
     ra = mySkycoords.ra.degree  # Right Ascension in degrees
     dec = mySkycoords.dec.degree   # Declination in degrees
     radius = myRadius/3600.  # Search radius in degrees
-    print(ra,dec,radius)
     query = (
     f"SELECT * FROM basic "
     f"WHERE 1=CONTAINS(POINT('ICRS',basic.ra,basic.dec), "
     f"CIRCLE('ICRS',{ra},{dec},{radius}))"
     )
-    print(query)
     result_table = simbad_service.search(query)
     result_table = result_table.to_table()
     #print(result_table.info())    
@@ -63,19 +78,15 @@ def checkVSX(mySkycoords,myRadius):
     ra = mySkycoords.ra.degree  # Right Ascension in degrees
     dec = mySkycoords.dec.degree   # Declination in degrees
     radius = myRadius/3600.  # Search radius in degrees
-    print(ra,dec,radius)
     query = (
     f"SELECT * FROM \"B/vsx/vsx\" "
     f"WHERE 1=CONTAINS(POINT('ICRS',\"B/vsx/vsx\".RAJ2000,\"B/vsx/vsx\".DEJ2000), "
     f"CIRCLE('ICRS',{ra},{dec},{radius}))"
     )
-    print(query)
     result_table = simbad_service.search(query)
     result_table = result_table.to_table()
     #print(result_table.info())    
     return result_table
-
-# Gaia
 
 def checkGaia(myRA,myDec,myRadius):
     print('== Explore Gaia ==')
@@ -116,7 +127,7 @@ def checkGaia(myRA,myDec,myRadius):
         #print(bck_result.info())
     return result, bck_result
 
-def plotGaia(myname,myRA,myDec,myGaiaObjects,myGaia_bck_Objects,mySimbadResults):
+def plotGaia(myname,myRA,myDec,myGaiaObjects,myGaia_bck_Objects,mySimbadResults,myVSXResults):
     print('== Plot Gaia ==')
 
     if len(myGaiaObjects) == 0:
@@ -151,16 +162,30 @@ def plotGaia(myname,myRA,myDec,myGaiaObjects,myGaia_bck_Objects,mySimbadResults)
     ax1.text(0.2, 0.4, 'Dec:' + str(myDec), horizontalalignment='left', verticalalignment='center', transform=ax1.transAxes)
     ax1.set_axis_off()
     #ax2.plot([1, 2, 3], [1, 4, 9])
-    ax2.text(0.2, 0.8, 'Simbad Name: ' + mySimbadResults['main_id'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
-    ax2.text(0.2, 0.6, 'Simbad Type: ' + mySimbadResults['otype_txt'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
-    ax2.text(0.2, 0.4, 'Simbad Sp.Type: ' + mySimbadResults['sp_type'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    if len(mySimbadResults) > 0:
+        ax2.text(0.2, 0.8, 'Simbad Name: ' + mySimbadResults['main_id'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+        ax2.text(0.2, 0.6, 'Simbad Type: ' + mySimbadResults['otype_txt'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+        ax2.text(0.2, 0.4, 'Simbad Sp.Type: ' + mySimbadResults['sp_type'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    else:
+        ax2.text(0.2, 0.6, 'No Simbad detection', horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
     ax2.set_axis_off()
+
+    if len(myVSXResults) > 0:
+        ax3.text(0.2, 0.8, 'VSX Name: ' + myVSXResults['Name'][0], horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+        ax3.text(0.2, 0.6, 'VSX Type: ' + myVSXResults['Type'][0], horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+        ax3.text(0.2, 0.4, 'VSX Period [d]: ' + str(myVSXResults['Period'][0]), horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+    else:
+        ax3.text(0.2, 0.6, 'No VSX detection', horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+    ax3.set_axis_off()
 
     #ax3.plot([1, 2, 3], [1, 4, 9])
     #tmp = myGaiaObjects[ myGaiaObjects['ruwe'] < 1.4 ]
     #tmp = tmp[ tmp['parallax_over_error'] > 5. ]
     ax4.scatter(myGaia_bck_Objects['bp_rp'],myGaia_bck_Objects['phot_g_mean_mag'])
     ax4.scatter(myGaiaObjects['bp_rp'],myGaiaObjects['phot_g_mean_mag'])
+    ax4.invert_yaxis()
+    ax4.set_xlabel('BP - RP')
+    ax4.set_ylabel('Gmag')
 
     tmp = myGaiaObjects[ myGaiaObjects['ruwe'] < 1.4 ]
     tmp = tmp[ tmp['parallax_over_error'] > 5. ]
@@ -170,6 +195,15 @@ def plotGaia(myname,myRA,myDec,myGaiaObjects,myGaia_bck_Objects,mySimbadResults)
 
     ax5.scatter(tmp_bck['bp_rp'],tmp_bck['phot_g_mean_mag'] + 5 - 5 * np.log10(1000./tmp_bck['parallax']))
     ax5.scatter(tmp['bp_rp'],tmp['phot_g_mean_mag'] + 5 - 5 * np.log10(1000./tmp['parallax']))
+    ax5.invert_yaxis()
+    ax5.set_xlabel('BP - RP')
+    ax5.set_ylabel('Gmag [abs]')
+
+    ax6.scatter(myGaia_bck_Objects['pmra'],myGaia_bck_Objects['pmdec'])
+    ax6.scatter(myGaiaObjects['pmra'],myGaiaObjects['pmdec'])
+    ax6.set_xlabel('proper motion RA')
+    ax6.set_ylabel('proper motion DEC')
+
 
     #ax6.scatter(myGaiaObjects['bp_rp'],myGaiaObjects['phot_g_mean_mag'])
 
@@ -279,19 +313,8 @@ def checkWISE(myRA,myDec,myRadius):#, max_rows=10):
 
     return allwise_result, allwise_bck_result, catwise_result, catwise_bck_result
 
-def plotWISE(myname,myRA,myDec,mySimbad_result,myWISE_result, myWISE_bck_result,myCatWISE_result, myCatWISE_bck_result):
+def plotWISE(myname,myRA,myDec,mySimbad_result,myVSX_result,myWISE_result, myWISE_bck_result,myCatWISE_result, myCatWISE_bck_result):
     print('== Plot WISE ==')
-
-
-    if len(mySimbad_result) == 0 :
-        Simbad_name = 'None'
-    else:
-        print(mySimbad_result)
-
-    if len(myWISE_result) == 0:
-        print('No WISE objects')
-    else:
-        print('WISE objects')
 
     # Create the figure
     fig = plt.figure(figsize=(8.27, 11.69))
@@ -320,16 +343,33 @@ def plotWISE(myname,myRA,myDec,mySimbad_result,myWISE_result, myWISE_bck_result,
     ax1.text(0.2, 0.4, 'Dec:' + str(myDec), horizontalalignment='left', verticalalignment='center', transform=ax1.transAxes)
     ax1.set_axis_off()
 
-    ax2.text(0.2, 0.8, 'Simbad Name: ' + mySimbad_result['main_id'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
-    ax2.text(0.2, 0.6, 'Simbad Type: ' + mySimbad_result['otype_txt'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
-    ax2.text(0.2, 0.4, 'Simbad Sp.Type: ' + mySimbad_result['sp_type'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    if len(mySimbad_result) > 0:
+        ax2.text(0.2, 0.8, 'Simbad Name: ' + mySimbad_result['main_id'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+        ax2.text(0.2, 0.6, 'Simbad Type: ' + mySimbad_result['otype_txt'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+        ax2.text(0.2, 0.4, 'Simbad Sp.Type: ' + mySimbad_result['sp_type'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    else:
+        ax2.text(0.2, 0.6, 'No Simbad detection', horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
     ax2.set_axis_off()
 
+    if len(myVSX_result) > 0:
+        ax3.text(0.2, 0.8, 'VSX Name: ' + myVSX_result['Name'][0], horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+        ax3.text(0.2, 0.6, 'VSX Type: ' + myVSX_result['Type'][0], horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+        ax3.text(0.2, 0.4, 'VSX Period [d]: ' + str(myVSX_result['Period'][0]), horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+    else:
+        ax3.text(0.2, 0.6, 'No VSX detection', horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    ax3.set_axis_off()
+
+    if len(myWISE_result) > 0:
+        ax4.scatter(myWISE_result['w1mag']-myWISE_result['w2mag'],myWISE_result['w2mag']-myWISE_result['w3mag'])
     ax4.scatter(myWISE_bck_result['w1mag']-myWISE_bck_result['w2mag'],myWISE_bck_result['w2mag']-myWISE_bck_result['w3mag'])
     ax4.set_xlabel('W1 - W2 (AllWISE)')
     ax4.set_ylabel('W2 - W3 (AllWISE)')
 
     ax6.hist(myCatWISE_bck_result['w1mag']-myCatWISE_bck_result['w2mag'])
+    if len(myCatWISE_result) > 0:
+        tmp = myCatWISE_result['w1mag']-myCatWISE_result['w2mag']
+        for eachcolour in tmp:
+            ax6.axvline(eachcolour,color='r')
     ax6.set_xlabel('W1 - W2 (CatWISE)')
 
     ## Adjust layout to prevent overlap
@@ -366,8 +406,6 @@ args = vars(ap.parse_args())
 
 # ============================================================================= #
 
-print(args)
-
 inputra = args['ra']
 inputdec = args['dec']
 
@@ -381,27 +419,25 @@ else:
 
 # ============================================================================= #
 
+'''
+python checkGAT.py -f d -r 5 303.8972306 -14.2790126
 
-#c = SkyCoord('07:25:53.03', '+29:04:10.2', frame='icrs',unit=(u.hourangle, u.deg))
-#c = SkyCoord('303.8972306', '-14.2790126', frame='icrs',unit=(u.deg, u.deg))
+python checkGAT.py -f x -r 5 07:25:53.03 +29:04:10.2
+'''
+
 c = SkyCoord(inputra, inputdec, frame='icrs',unit=myUnitType)
 print(c.ra.degree,c.dec.degree)
 name = GATname(c)
 Simbad_result = checkSimbad(c,5)
-#print(Simbad_result)
-#print(Simbad_result['main_id','otype_txt','sp_type'])
-#print(Simbad_result['main_id'][0])
+VSX_result = checkVSX(c,5)
 
-#VSX_result = checkVSX(c,5)
-#print(VSX_result.info())
-
-#GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,60.0)
-#if len(GaiaResults) > 0:
-#    plotGaia(name,c.ra,c.dec,GaiaResults,Gaia_bck_results,Simbad_result)
-#else:
-#    print('no Gaia results')
-#allwise_result, allwise_bck_result, catwise_result, catwise_bck_result = checkWISE(c.ra.degree,c.dec.degree,5.0)
-#if len(allwise_result) == 0 and len(catwise_result) == 0:
-#    print('no WISE results')
-#else:
-#    plotWISE(name,c.ra,c.dec,Simbad_result,allwise_result, allwise_bck_result, catwise_result, catwise_bck_result)
+GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,60.0)
+if len(GaiaResults) > 0:
+    plotGaia(name,c.ra,c.dec,GaiaResults,Gaia_bck_results,Simbad_result,VSX_result)
+else:
+    print('no Gaia results')
+allwise_result, allwise_bck_result, catwise_result, catwise_bck_result = checkWISE(c.ra.degree,c.dec.degree,5.0)
+if len(allwise_result) == 0 and len(catwise_result) == 0:
+    print('no WISE results')
+else:
+    plotWISE(name,c.ra,c.dec,Simbad_result,VSX_result,allwise_result, allwise_bck_result, catwise_result, catwise_bck_result)
