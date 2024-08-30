@@ -9,11 +9,28 @@ import matplotlib.pyplot as plt
 from astroquery.simbad import Simbad
 import argparse
 
+from gaiaxpy import convert,plot_spectra,calibrate
+from astroquery.gaia import Gaia
+
 # To avoid warnings
 import warnings
 warnings.simplefilter("ignore")
 
 '''
+
+Author: A.Ederoclite
+
+Description:
+This script queries VSX (via VizieR), Simbad, Gaia and WISE to find counterparts
+of transients, given the coordinates of an object and a search radius.
+
+Dependencies:
+- numpy
+- matplotlib
+- astropy
+- astroquery
+- pyvo
+
 Todo:
 - add Gaia light curve
 - add Gaia BP/RP spectra
@@ -102,7 +119,7 @@ def checkGaia(myRA,myDec,myRadius):
     f"WHERE 1=CONTAINS(POINT('ICRS',gaiadr3.gaia_source.ra,gaiadr3.gaia_source.dec), "
     f"CIRCLE('ICRS',{ra},{dec},{radius}))"
     )
-
+    print(query)
     result = gaia_service.search(query)
     #print(result)
     print(len(result))
@@ -152,8 +169,8 @@ def plotGaia(myname,myRA,myDec,myGaiaObjects,myGaia_bck_Objects,mySimbadResults,
     ax6 = fig.add_subplot(gs[1, 2])
 
     # Third row: 2 plots (first two spanning 2 columns)
-    #ax6 = fig.add_subplot(gs[2, :2])
-    #ax7 = fig.add_subplot(gs[2, 2])
+    ax7 = fig.add_subplot(gs[2, :2])
+    ax8 = fig.add_subplot(gs[2, 2])
 
     # Add some data or customize the axes here
     #ax1.plot([1, 2, 3], [1, 4, 9])
@@ -204,6 +221,41 @@ def plotGaia(myname,myRA,myDec,myGaiaObjects,myGaia_bck_Objects,mySimbadResults,
     ax6.set_xlabel('proper motion RA')
     ax6.set_ylabel('proper motion DEC')
 
+
+    if len(myGaiaObjects) == 1:
+        sources = ['679528804789642240']
+        print(sources)
+        sources = [myGaiaObjects['source_id'][0]]
+        print(sources)
+        calibrated_Gaia_spectrum, sampling = calibrate(sources,save_file=False)
+        #plot_spectra(converted_data, sampling=sampling, multi=False, show_plot=True)
+        ax7.plot(sampling,calibrated_Gaia_spectrum['flux'][0])
+
+
+        # https://www.cosmos.esa.int/web/gaia-users/archive/datalink-products#datalink_jntb_get_all
+
+        # https://gea.esac.esa.int/data-server/datalink/links?ID=Gaia+DR3+30343944744320
+        # https://gea.esac.esa.int/data-server/datalink/links?ID=Gaia+DR3+679528804789642240
+
+        retrieval_type = 'EPOCH_PHOTOMETRY'  # Options are: 'EPOCH_PHOTOMETRY', 'MCMC_GSPPHOT', 'MCMC_MSC', 'XP_SAMPLED', 'XP_CONTINUOUS', 'RVS', 'ALL'
+        data_structure = 'INDIVIDUAL'   # Options are: 'INDIVIDUAL', 'COMBINED', 'RAW'
+        data_release   = 'Gaia DR3'     # Options are: 'Gaia DR3' (default), 'Gaia DR2'
+        datalink = Gaia.load_data(ids=sources, data_release = data_release, retrieval_type=retrieval_type, data_structure = data_structure, verbose = False, output_file = None)
+        dl_keys  = [inp for inp in datalink.keys()]
+        dl_keys.sort()
+        print()
+        print(f'The following Datalink products have been downloaded:')
+        for dl_key in dl_keys:
+            print(f' * {dl_key}')
+            inp_table  = datalink[dl_key][0].to_table()
+            ax8.set_xlabel   = f'JD date [{inp_table["time"].unit}]'
+            ax8.set_ylabel   = f'magnitude [{inp_table["mag"].unit}]'
+            gbands   = ['G', 'RP', 'BP']
+            colours  = iter(['green', 'red', 'blue'])
+            for band in gbands:
+                phot_set = inp_table[inp_table['band'] == band]
+                ax8.plot(phot_set['time'], phot_set['mag'], 'o', label = band, color = next(colours))
+            ax8.legend()
 
     #ax6.scatter(myGaiaObjects['bp_rp'],myGaiaObjects['phot_g_mean_mag'])
 
@@ -408,6 +460,7 @@ args = vars(ap.parse_args())
 
 inputra = args['ra']
 inputdec = args['dec']
+inputRadius = float(args['r'])
 
 inputUnitType = args['f']
 if inputUnitType == 'x':
@@ -425,13 +478,16 @@ python checkGAT.py -f d -r 5 303.8972306 -14.2790126
 python checkGAT.py -f x -r 5 07:25:53.03 +29:04:10.2
 '''
 
+# AT Cnc
+# python checkGAT.py -f x -r 5 08:28:36.92 +25:20:03.04
+
 c = SkyCoord(inputra, inputdec, frame='icrs',unit=myUnitType)
 print(c.ra.degree,c.dec.degree)
 name = GATname(c)
 Simbad_result = checkSimbad(c,5)
 VSX_result = checkVSX(c,5)
 
-GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,60.0)
+GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,inputRadius)
 if len(GaiaResults) > 0:
     plotGaia(name,c.ra,c.dec,GaiaResults,Gaia_bck_results,Simbad_result,VSX_result)
 else:
