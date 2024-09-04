@@ -8,6 +8,13 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 from astroquery.simbad import Simbad
 import argparse
+from astropy.time import Time
+import urllib.request
+
+
+from astropy.io import ascii
+
+
 
 from gaiaxpy import convert,plot_spectra,calibrate
 from astroquery.gaia import Gaia
@@ -435,18 +442,116 @@ def plotWISE(myname,myRA,myDec,mySimbad_result,myVSX_result,myWISE_result, myWIS
     # Show the figure
     #plt.show()
 
+def checkAAVSOLC(myVSXResults):
+    # AAVSO
 
-# J-PLUS
+    # https://www.aavso.org/vsx/index.php?view=api.object&ident=000-BCQ-471&data=50000&fromjd=2459752.5&tojd=2460483.5&csv&band=Vis.,V&mtype=std
 
-# AAVSO
+    # https://www.aavso.org/vsx/index.php?view=api.object&ident=T-Pyx&data=50000&fromjd=2459752.5&tojd=2460483.5&csv&band=Vis.,V&mtype=std
+
+    # https://www.aavso.org/programmatic-access-aavso-light-curves
+
+    #t = Time(times, format='isot', scale='utc')
+    t = Time.now()
+    t_jd = round(t.jd,2)
+    print(t_jd)
+    t0 = t_jd - 1000.
+    myurl = "https://www.aavso.org/vsx/index.php?view=api.object&ident=" + myVSXResults['Name'][0] + "&data=50000&fromjd="
+    myurl = myurl + str(t0) + "&tojd=" + str(t_jd) + "&csv&band=Vis.,V&mtype=std"
+    #print(myurl)
+    myurl= myurl.replace(' ','-')
+    # https://www.aavso.org/vsx/index.php?view=api.object&ident=AT Cnc&data=50000&fromjd=2459558.07&tojd=2460558.07&csv&band=Vis.,V&mtype=std
+
+    try: 
+        urllib.request.urlopen(myurl)
+        urllib.request.urlretrieve(myurl, 'tmp.votable')
+    except urllib.error.URLError as e:
+        print(e.reason)
+
+    jds = []
+    mags = []
+    myfile = open('tmp.votable','r')
+    for index,eachline in enumerate(myfile):
+        if index > 1 :
+            print(index, eachline)
+            tmp = eachline.strip().split(',')
+            try :
+                jds.append(float(tmp[0]))
+                mags.append(float(tmp[1]))
+            except:
+                pass
+    myfile.close()
+    os.system('rm tmp.votable')
+    return [jds,mags]
 
 # ASAS-SN
 
 # ZTF
 
+def plotLCs(myname,myRA,myDec,mySimbad_result,myVSX_result,myAAVSOLC):
+
+    print('== Plot LCs ==')
+
+    # Create the figure
+    fig = plt.figure(figsize=(8.27, 11.69))
+
+    fig.suptitle(myname + ' Light Curves')
+
+    # Create a GridSpec with 3 rows and 3 columns
+    gs = gridspec.GridSpec(4, 3)
+
+    # First row: 3 plots
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[0, 2])
+
+    # Second row: 3 plots
+    ax4 = fig.add_subplot(gs[1, :2])
+    #ax5 = fig.add_subplot(gs[1, 1])
+    #ax6 = fig.add_subplot(gs[1, 2])
+
+    # Third row: 2 plots (first two spanning 2 columns)
+    #ax6 = fig.add_subplot(gs[2, 0])
+    #ax7 = fig.add_subplot(gs[2, 2])
+
+    ax1.text(0.2, 0.8, 'Name:' + myname, horizontalalignment='left', verticalalignment='center', transform=ax1.transAxes)
+    ax1.text(0.2, 0.6, 'RA:' + str(myRA), horizontalalignment='left', verticalalignment='center', transform=ax1.transAxes)
+    ax1.text(0.2, 0.4, 'Dec:' + str(myDec), horizontalalignment='left', verticalalignment='center', transform=ax1.transAxes)
+    ax1.set_axis_off()
+
+    if len(mySimbad_result) > 0:
+        ax2.text(0.2, 0.8, 'Simbad Name: ' + mySimbad_result['main_id'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+        ax2.text(0.2, 0.6, 'Simbad Type: ' + mySimbad_result['otype_txt'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+        ax2.text(0.2, 0.4, 'Simbad Sp.Type: ' + mySimbad_result['sp_type'][0], horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    else:
+        ax2.text(0.2, 0.6, 'No Simbad detection', horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    ax2.set_axis_off()
+
+    if len(myVSX_result) > 0:
+        ax3.text(0.2, 0.8, 'VSX Name: ' + myVSX_result['Name'][0], horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+        ax3.text(0.2, 0.6, 'VSX Type: ' + myVSX_result['Type'][0], horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+        ax3.text(0.2, 0.4, 'VSX Period [d]: ' + str(myVSX_result['Period'][0]), horizontalalignment='left', verticalalignment='center', transform=ax3.transAxes)
+    else:
+        ax3.text(0.2, 0.6, 'No VSX detection', horizontalalignment='left', verticalalignment='center', transform=ax2.transAxes)
+    ax3.set_axis_off()
+
+    if len(myAAVSOLC[0]) > 0:
+        #print(jds,mags)
+        #plt.scatter(jds,mags)
+        #plt.show()
+        ax4.scatter(myAAVSOLC[0],myAAVSOLC[1])
+        ax4.invert_yaxis()
+
+    # Save the figure
+    if not os.path.exists('./'+myname):
+        os.mkdir('./'+myname)
+    plt.savefig('./'+ myname + '/' + myname + '_LCs.png')
+
+
 # eROSITA
 # https://vizier.cds.unistra.fr/viz-bin/VizieR-3?-source=J/A+A/682/A34/erass1-m    
 
+# J-PLUS
 
 # Construct the argument parser
 ap = argparse.ArgumentParser()
@@ -487,7 +592,7 @@ name = GATname(c)
 Simbad_result = checkSimbad(c,5)
 VSX_result = checkVSX(c,5)
 
-GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,inputRadius)
+'''GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,inputRadius)
 if len(GaiaResults) > 0:
     plotGaia(name,c.ra,c.dec,GaiaResults,Gaia_bck_results,Simbad_result,VSX_result)
 else:
@@ -496,4 +601,7 @@ allwise_result, allwise_bck_result, catwise_result, catwise_bck_result = checkWI
 if len(allwise_result) == 0 and len(catwise_result) == 0:
     print('no WISE results')
 else:
-    plotWISE(name,c.ra,c.dec,Simbad_result,VSX_result,allwise_result, allwise_bck_result, catwise_result, catwise_bck_result)
+    plotWISE(name,c.ra,c.dec,Simbad_result,VSX_result,allwise_result, allwise_bck_result, catwise_result, catwise_bck_result)'''
+
+AAVSOLC = checkAAVSOLC(VSX_result)
+plotLCs(name,c.ra,c.dec,Simbad_result,VSX_result,AAVSOLC)
