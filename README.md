@@ -22,6 +22,6 @@ checkGAT.py [-h] -f F -r R ra dec
 ## Todo:
 - add GALEX
 - add eROSITA
-- add light curve plot: ASAS-SN, ZTF
+- add light curve plot: ASAS-SN
 - add J-surveys
 - make more elegant to avoid plotting in case no objects are found
