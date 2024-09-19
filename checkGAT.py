@@ -11,6 +11,7 @@ import argparse
 from astropy.time import Time
 import urllib.request
 
+from ztfquery import lightcurve
 
 from astropy.io import ascii
 
@@ -98,7 +99,7 @@ def checkVSX(mySkycoords,myRadius):
     #result_table = Simbad.query_region(mySkycoords, radius=myRadius * u.arcsec)
     ##result_table.to_table()
     #print(result_table.info())
-    simbad_service = vo.dal.TAPService("http://TAPVizieR.u-strasbg.fr/TAPVizieR/tap/")
+    vsx_service = vo.dal.TAPService("http://TAPVizieR.u-strasbg.fr/TAPVizieR/tap/")
     ra = mySkycoords.ra.degree  # Right Ascension in degrees
     dec = mySkycoords.dec.degree   # Declination in degrees
     radius = myRadius/3600.  # Search radius in degrees
@@ -107,7 +108,7 @@ def checkVSX(mySkycoords,myRadius):
     f"WHERE 1=CONTAINS(POINT('ICRS',\"B/vsx/vsx\".RAJ2000,\"B/vsx/vsx\".DEJ2000), "
     f"CIRCLE('ICRS',{ra},{dec},{radius}))"
     )
-    result_table = simbad_service.search(query)
+    result_table = vsx_service.search(query)
     result_table = result_table.to_table()
     #print(result_table.info())    
     return result_table
@@ -443,6 +444,7 @@ def plotWISE(myname,myRA,myDec,mySimbad_result,myVSX_result,myWISE_result, myWIS
     #plt.show()
 
 def checkAAVSOLC(myVSXResults):
+    
     # AAVSO
 
     # https://www.aavso.org/vsx/index.php?view=api.object&ident=000-BCQ-471&data=50000&fromjd=2459752.5&tojd=2460483.5&csv&band=Vis.,V&mtype=std
@@ -451,44 +453,57 @@ def checkAAVSOLC(myVSXResults):
 
     # https://www.aavso.org/programmatic-access-aavso-light-curves
 
-    #t = Time(times, format='isot', scale='utc')
-    t = Time.now()
-    t_jd = round(t.jd,2)
-    print(t_jd)
-    t0 = t_jd - 1000.
-    myurl = "https://www.aavso.org/vsx/index.php?view=api.object&ident=" + myVSXResults['Name'][0] + "&data=50000&fromjd="
-    myurl = myurl + str(t0) + "&tojd=" + str(t_jd) + "&csv&band=Vis.,V&mtype=std"
-    #print(myurl)
-    myurl= myurl.replace(' ','-')
-    # https://www.aavso.org/vsx/index.php?view=api.object&ident=AT Cnc&data=50000&fromjd=2459558.07&tojd=2460558.07&csv&band=Vis.,V&mtype=std
-
-    try: 
-        urllib.request.urlopen(myurl)
-        urllib.request.urlretrieve(myurl, 'tmp.votable')
-    except urllib.error.URLError as e:
-        print(e.reason)
-
     jds = []
     mags = []
-    myfile = open('tmp.votable','r')
-    for index,eachline in enumerate(myfile):
-        if index > 1 :
-            print(index, eachline)
-            tmp = eachline.strip().split(',')
-            try :
-                jds.append(float(tmp[0]))
-                mags.append(float(tmp[1]))
-            except:
-                pass
-    myfile.close()
-    os.system('rm tmp.votable')
+    if len(myVSXResults) > 0:
+        t = Time.now()
+        t_jd = round(t.jd,2)
+        print(t_jd)
+        t0 = t_jd - 1000.
+        myurl = "https://www.aavso.org/vsx/index.php?view=api.object&ident=" + myVSXResults['Name'][0] + "&data=50000&fromjd="
+        myurl = myurl + str(t0) + "&tojd=" + str(t_jd) + "&csv&band=Vis.,V&mtype=std"
+        #print(myurl)
+        myurl= myurl.replace(' ','-')
+        # https://www.aavso.org/vsx/index.php?view=api.object&ident=AT Cnc&data=50000&fromjd=2459558.07&tojd=2460558.07&csv&band=Vis.,V&mtype=std
+
+        try: 
+            urllib.request.urlopen(myurl)
+            urllib.request.urlretrieve(myurl, 'tmp.votable')
+        except urllib.error.URLError as e:
+            print(e.reason)
+
+        myfile = open('tmp.votable','r')
+        for index,eachline in enumerate(myfile):
+            if index > 1 :
+                print(index, eachline)
+                tmp = eachline.strip().split(',')
+                try :
+                    jds.append(float(tmp[0]))
+                    mags.append(float(tmp[1]))
+                except:
+                    pass
+        myfile.close()
+        os.system('rm tmp.votable')
     return [jds,mags]
 
 # ASAS-SN
 
 # ZTF
 
-def plotLCs(myname,myRA,myDec,mySimbad_result,myVSX_result,myAAVSOLC):
+def checkZTF(mySkycoords,myRadius):
+    print('== Explore ZTF (via ZTFQuery) ==')
+    print('you may need to be patiend with this')
+
+    ra = mySkycoords.ra.degree  # Right Ascension in degrees
+    dec = mySkycoords.dec.degree   # Declination in degrees
+
+    # https://github.com/MickaelRigault/ztfquery/blob/master/doc/lightcurve.md
+    lcq = lightcurve.LCQuery.from_position(ra, dec, myRadius)
+    #print(lcq.data)
+
+    return lcq.data
+
+def plotLCs(myname,myRA,myDec,mySimbad_result,myVSX_result,myAAVSOLC,myZTFLC):
 
     print('== Plot LCs ==')
 
@@ -511,7 +526,7 @@ def plotLCs(myname,myRA,myDec,mySimbad_result,myVSX_result,myAAVSOLC):
     #ax6 = fig.add_subplot(gs[1, 2])
 
     # Third row: 2 plots (first two spanning 2 columns)
-    #ax6 = fig.add_subplot(gs[2, 0])
+    ax6 = fig.add_subplot(gs[2, 0])
     #ax7 = fig.add_subplot(gs[2, 2])
 
     ax1.text(0.2, 0.8, 'Name:' + myname, horizontalalignment='left', verticalalignment='center', transform=ax1.transAxes)
@@ -541,6 +556,13 @@ def plotLCs(myname,myRA,myDec,mySimbad_result,myVSX_result,myAAVSOLC):
         #plt.show()
         ax4.scatter(myAAVSOLC[0],myAAVSOLC[1])
         ax4.invert_yaxis()
+
+    if len(myZTFLC) > 0:
+        #print(jds,mags)
+        #plt.scatter(jds,mags)
+        #plt.show()
+        ax6.scatter(myZTFLC['mjd'],myZTFLC['mag'])
+        ax6.invert_yaxis()
 
     # Save the figure
     if not os.path.exists('./'+myname):
@@ -586,13 +608,16 @@ python checkGAT.py -f x -r 5 07:25:53.03 +29:04:10.2
 # AT Cnc
 # python checkGAT.py -f x -r 5 08:28:36.92 +25:20:03.04
 
+# JVAR binary
+# python checkGAT.py -f x -r 5 14:05:03.34 +33:16:13.68
+
 c = SkyCoord(inputra, inputdec, frame='icrs',unit=myUnitType)
 print(c.ra.degree,c.dec.degree)
 name = GATname(c)
 Simbad_result = checkSimbad(c,5)
 VSX_result = checkVSX(c,5)
 
-'''GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,inputRadius)
+GaiaResults,Gaia_bck_results = checkGaia(c.ra.degree,c.dec.degree,inputRadius)
 if len(GaiaResults) > 0:
     plotGaia(name,c.ra,c.dec,GaiaResults,Gaia_bck_results,Simbad_result,VSX_result)
 else:
@@ -601,7 +626,8 @@ allwise_result, allwise_bck_result, catwise_result, catwise_bck_result = checkWI
 if len(allwise_result) == 0 and len(catwise_result) == 0:
     print('no WISE results')
 else:
-    plotWISE(name,c.ra,c.dec,Simbad_result,VSX_result,allwise_result, allwise_bck_result, catwise_result, catwise_bck_result)'''
+    plotWISE(name,c.ra,c.dec,Simbad_result,VSX_result,allwise_result, allwise_bck_result, catwise_result, catwise_bck_result)
 
 AAVSOLC = checkAAVSOLC(VSX_result)
-plotLCs(name,c.ra,c.dec,Simbad_result,VSX_result,AAVSOLC)
+ZTFLC = checkZTF(c,inputRadius)
+plotLCs(name,c.ra,c.dec,Simbad_result,VSX_result,AAVSOLC,ZTFLC)
